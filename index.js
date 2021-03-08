@@ -8,6 +8,28 @@ const multer = require('multer');
 
 const sleep = require('util').promisify(setTimeout);
 const fs = require("fs");
+const SpotifyWebApi = require('spotify-web-api-node');
+
+// credentials are optional
+const scopes = ['user-read-private', 'user-read-email', "playlist-modify-private"];
+const redirectUri = 'http://localhost:3000/callback';
+
+
+dotenv.config({ path: path.resolve(__dirname + '/process.env') });
+
+
+const clientId = process.env.SPOTIFY_CLIENT_KEY;
+const secretKey = process.env.SPOTIFY_CLIENT_SECRET;
+
+
+
+// Setting credentials can be done in the wrapper's constructor, or using the API object's setters.
+var spotifyApi = new SpotifyWebApi({
+    redirectUri: redirectUri,
+    clientId: clientId,
+    clientSecret: secretKey,
+});
+
 
 
 const storage = multer.diskStorage({
@@ -21,25 +43,26 @@ const storage = multer.diskStorage({
 });
 
 
-dotenv.config({ path: path.resolve(__dirname + '/process.env') });
 
 const app = express()
 
 
-app.use(
-    cors({
-        origin: function (origin, callback) {
-            if (!origin) return callback(null, true);
-            if (allowedOrigins.indexOf(origin) === -1) {
-                var msg =
-                    "The CORS policy for this site does not " +
-                    "allow access from the specified Origin.";
-                return callback(new Error(msg), false);
-            }
-            return callback(null, true);
-        }
-    })
-);
+// app.use(
+//     cors({
+//         origin: function (origin, callback) {
+//             if (!origin) return callback(null, true);
+//             if (allowedOrigins.indexOf(origin) === -1) {
+//                 var msg =
+//                     "The CORS policy for this site does not " +
+//                     "allow access from the specified Origin.";
+//                 return callback(new Error(msg), false);
+//             }
+//             return callback(null, true);
+//         }
+//     })
+// );
+
+app.use(cors())
 
 
 const upload = multer({
@@ -52,6 +75,12 @@ const allowedOrigins = ["http://localhost:3000", "http://localhost:5000"];
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+// app.all('/*', function (req, res, next) {
+//     res.header('Access-Control-Allow-Origin', '*');
+//     res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,HEAD,DELETE,OPTIONS');
+//     res.header('Access-Control-Allow-Headers', 'content-Type,x-requested-with');
+//     next();
+// });
 
 const PORT = 3000;
 
@@ -72,6 +101,7 @@ app.post("/detectText", upload.single("file"), async (req, res) => {
 
     };
 
+
     const dataToPrint = await readAndGetRes(req.file.path)
 
     console.log(dataToPrint)
@@ -81,6 +111,56 @@ app.post("/detectText", upload.single("file"), async (req, res) => {
     res.send({ "data": finalAnalyzedData })
 
 })
+
+app.get("/spotifyLogin", (req, res) => {
+    res.redirect(spotifyApi.createAuthorizeURL(scopes))
+});
+
+app.get("/callback", (req, res) => {
+    console.log("i came here")
+    const error = req.query.error;
+    const code = req.query.code;
+    const state = req.query.state;
+
+    if (error) {
+        console.error('Callback Error:', error);
+        res.send(`Callback Error: ${error}`);
+        return;
+    }
+
+    spotifyApi
+        .authorizationCodeGrant(code)
+        .then(data => {
+            const access_token = data.body['access_token'];
+            const refresh_token = data.body['refresh_token'];
+            const expires_in = data.body['expires_in'];
+
+            spotifyApi.setAccessToken(access_token);
+            spotifyApi.setRefreshToken(refresh_token);
+
+            console.log('access_token:', access_token);
+            console.log('refresh_token:', refresh_token);
+
+            console.log(
+                `Sucessfully retreived access token. Expires in ${expires_in} s.`
+            );
+
+            setInterval(async () => {
+                const data = await spotifyApi.refreshAccessToken();
+                const access_token = data.body['access_token'];
+
+                console.log('The access token has been refreshed!');
+                console.log('access_token:', access_token);
+                spotifyApi.setAccessToken(access_token);
+            }, expires_in / 2 * 1000);
+            res.redirect("http://localhost:5000")
+
+        })
+        .catch(error => {
+            console.error('Error getting Tokens:', error);
+            res.send(`Error getting Tokens: ${error}`);
+        });
+});
 
 
 const readAndGetRes = async (filePath) => {
@@ -98,7 +178,6 @@ const readAndGetRes = async (filePath) => {
 
     let operationUrl = resp.headers['operation-location'];
     while (true) {
-        // console.log(resp)
 
         resp = await axios.get(operationUrl, config)
         if (resp.data.status === "succeeded") {
