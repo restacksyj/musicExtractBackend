@@ -9,6 +9,7 @@ const multer = require('multer');
 const sleep = require('util').promisify(setTimeout);
 const fs = require("fs");
 const SpotifyWebApi = require('spotify-web-api-node');
+const { query } = require("express");
 
 // credentials are optional
 const scopes = ['user-read-private', 'user-read-email', "playlist-modify-private"];
@@ -104,9 +105,64 @@ app.post("/detectText", upload.single("file"), async (req, res) => {
 
     const dataToPrint = await readAndGetRes(req.file.path)
 
-    console.log(dataToPrint)
 
     const finalAnalyzedData = printRecText(dataToPrint)
+
+
+    let uriArr = [];
+    for (song of finalAnalyzedData) {
+        let eachSong = song.split("-")
+        let artistName = eachSong[0]
+
+        //    console.log(st.toLowerCase().replace(/\s+/g, "") == artistName.toString().toLowerCase().replace(/\s+/g, ""))
+        let searchres = await spotifyApi.searchTracks(`${eachSong[1]}`)
+
+        for (item of searchres.body.tracks.items) {
+            if (item !== undefined) {
+                
+                if (item.artists[0]["name"].toLowerCase().replace(/\s+/g, "") == artistName.toLowerCase().replace(/\s+/g, "")) {
+                    console.log(`${item["name"]} ${item.artists[0]["name"]}`)
+                    console.log(item["uri"])
+                }
+                // console.log(`${item["name"]} ${item.artists[0]["name"].toLowerCase().replace(/\s+/g, "") == artistName.toLowerCase().replace(/\s+/g, "")}`);
+            }
+        }
+        // if (searchres.body.tracks.items[0]["uri"]!==undefined){
+
+        //     console.log(searchres.body.tracks.items[0]["uri"]);
+        // }
+        // let uriId = searchres.body.tracks.items[0]["uri"]
+        // uriArr.push(uriId)
+        // for(item  of searchres.body.tracks.items){
+        //     const el = item.artists.find(element=> element.name==="John Mayer")
+        //     console.log(el.name)
+        //     // for(aritstObjs of track.artists){
+        //     //     // console.log(`${aritstObjs.name.toString().toLowerCase()} ${eachSong[0].toLowerCase()} `)
+        //     //     // // console.log(eachSong[0].toLowerCase())
+        //     //     // if (aritstObjs.name.toString().toLowerCase().includes(eachSong[0].toLowerCase())===true) {
+        //     //     //     // console.log(track[0].name)
+        //     //     //     console.log(aritstObjs.preview_url)
+
+        //     //     // }
+        //     // }
+
+        // }
+
+        // if(searchres.body.tracks.artists.includes(eachSong[0])){
+        //     console.log(searchres.body.tracks)
+        // }
+
+
+    }
+
+    // const makePlaylist = await spotifyApi.createPlaylist(req.body.playlistName,{'public':false})
+    // console.log(makePlaylist)
+
+    // const addSongsToPlaylist = await spotifyApi.addTracksToPlaylist(makePlaylist.body.id,uriArr)
+    // console.log(addSongsToPlaylist);
+
+
+
 
     res.send({ "data": finalAnalyzedData })
 
@@ -163,6 +219,9 @@ app.get("/callback", (req, res) => {
 });
 
 
+
+
+
 const readAndGetRes = async (filePath) => {
 
     var config = {
@@ -205,16 +264,17 @@ const readAndGetRes = async (filePath) => {
 
 const printRecText = (readResults) => {
 
-    let mappedData = ""
+    let mappedData = [];
 
     for (const page in readResults) {
 
         const result = readResults[page];
         if (result.lines.length) {
             for (const line of result.lines) {
-                mappedData += line.words.map(w => w.text).join(' ');
+                mappedData.push(line.words.map(w => w.text).join(' '));
 
             }
+            console.log(mappedData)
             return mappedData;
 
         }
