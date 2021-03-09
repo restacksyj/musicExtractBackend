@@ -11,7 +11,6 @@ const fs = require("fs");
 const SpotifyWebApi = require('spotify-web-api-node');
 const { query } = require("express");
 
-// credentials are optional
 const scopes = ['user-read-private', 'user-read-email', "playlist-modify-private"];
 const redirectUri = 'http://localhost:3000/callback';
 
@@ -22,9 +21,6 @@ dotenv.config({ path: path.resolve(__dirname + '/process.env') });
 const clientId = process.env.SPOTIFY_CLIENT_KEY;
 const secretKey = process.env.SPOTIFY_CLIENT_SECRET;
 
-
-
-// Setting credentials can be done in the wrapper's constructor, or using the API object's setters.
 var spotifyApi = new SpotifyWebApi({
     redirectUri: redirectUri,
     clientId: clientId,
@@ -76,18 +72,14 @@ const allowedOrigins = ["http://localhost:3000", "http://localhost:5000"];
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
-// app.all('/*', function (req, res, next) {
-//     res.header('Access-Control-Allow-Origin', '*');
-//     res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,HEAD,DELETE,OPTIONS');
-//     res.header('Access-Control-Allow-Headers', 'content-Type,x-requested-with');
-//     next();
-// });
+
 
 const PORT = 3000;
-
 const APP_KEY = process.env.APP_KEY
-
 const azure_url = "https://eastus.api.cognitive.microsoft.com/vision/v3.1/read/analyze"
+
+let tokenExpirationEpoch;
+
 
 
 app.get("/", (req, res) => res.json({ "hello": "cool" }))
@@ -104,73 +96,42 @@ app.post("/detectText", upload.single("file"), async (req, res) => {
 
 
     const dataToPrint = await readAndGetRes(req.file.path)
-
-
     const finalAnalyzedData = printRecText(dataToPrint)
 
-
     let uriArr = [];
+
+
     for (song of finalAnalyzedData) {
         let eachSong = song.split("-")
         let artistName = eachSong[0]
-
-        //    console.log(st.toLowerCase().replace(/\s+/g, "") == artistName.toString().toLowerCase().replace(/\s+/g, ""))
-        let searchres = await spotifyApi.searchTracks(`${eachSong[1]}`)
-
-        for (item of searchres.body.tracks.items) {
-            if (item !== undefined) {
-                
-                if (item.artists[0]["name"].toLowerCase().replace(/\s+/g, "") == artistName.toLowerCase().replace(/\s+/g, "")) {
-                    console.log(`${item["name"]} ${item.artists[0]["name"]}`)
-                    console.log(item["uri"])
-                }
-                // console.log(`${item["name"]} ${item.artists[0]["name"].toLowerCase().replace(/\s+/g, "") == artistName.toLowerCase().replace(/\s+/g, "")}`);
-            }
+        let songName = eachSong[1]
+        let searchQuery= encodeURI(`track:${songName}+artist:${artistName}`)
+       
+        let searchres = await axios.get(`https://api.spotify.com/v1/search?q=${searchQuery}&type=track`,{headers:{
+            "Authorization":`Bearer ${spotifyApi.getAccessToken()}`,
+            "Content-Type":"application/json"
         }
-        // if (searchres.body.tracks.items[0]["uri"]!==undefined){
+        })
 
-        //     console.log(searchres.body.tracks.items[0]["uri"]);
-        // }
-        // let uriId = searchres.body.tracks.items[0]["uri"]
-        // uriArr.push(uriId)
-        // for(item  of searchres.body.tracks.items){
-        //     const el = item.artists.find(element=> element.name==="John Mayer")
-        //     console.log(el.name)
-        //     // for(aritstObjs of track.artists){
-        //     //     // console.log(`${aritstObjs.name.toString().toLowerCase()} ${eachSong[0].toLowerCase()} `)
-        //     //     // // console.log(eachSong[0].toLowerCase())
-        //     //     // if (aritstObjs.name.toString().toLowerCase().includes(eachSong[0].toLowerCase())===true) {
-        //     //     //     // console.log(track[0].name)
-        //     //     //     console.log(aritstObjs.preview_url)
+        let songsResponse = searchres.data.tracks.items;
+        if (songsResponse.length>0){
+            uriArr.push(songsResponse[0].uri)
+        }
 
-        //     //     // }
-        //     // }
+    } 
 
-        // }
+    const makePlaylist = await spotifyApi.createPlaylist(req.body.playlistName,{'public':false})
+    const addSongsToPlaylist = await spotifyApi.addTracksToPlaylist(makePlaylist.body.id,uriArr)
+    const playListUrl = await spotifyApi.getPlaylist(makePlaylist.body.id)
 
-        // if(searchres.body.tracks.artists.includes(eachSong[0])){
-        //     console.log(searchres.body.tracks)
-        // }
-
-
-    }
-
-    // const makePlaylist = await spotifyApi.createPlaylist(req.body.playlistName,{'public':false})
-    // console.log(makePlaylist)
-
-    // const addSongsToPlaylist = await spotifyApi.addTracksToPlaylist(makePlaylist.body.id,uriArr)
-    // console.log(addSongsToPlaylist);
-
-
-
-
-    res.send({ "data": finalAnalyzedData })
+    res.send({ "data": playListUrl.body.external_urls.spotify })
 
 })
 
 app.get("/spotifyLogin", (req, res) => {
     res.redirect(spotifyApi.createAuthorizeURL(scopes))
 });
+
 
 app.get("/callback", (req, res) => {
     console.log("i came here")
@@ -184,39 +145,83 @@ app.get("/callback", (req, res) => {
         return;
     }
 
-    spotifyApi
-        .authorizationCodeGrant(code)
-        .then(data => {
-            const access_token = data.body['access_token'];
-            const refresh_token = data.body['refresh_token'];
-            const expires_in = data.body['expires_in'];
 
-            spotifyApi.setAccessToken(access_token);
-            spotifyApi.setRefreshToken(refresh_token);
+    // First retrieve an access token
+    spotifyApi.authorizationCodeGrant(code).then(
+        function (data) {
+            // Set the access token and refresh token
+            spotifyApi.setAccessToken(data.body['access_token']);
+            spotifyApi.setRefreshToken(data.body['refresh_token']);
 
-            console.log('access_token:', access_token);
-            console.log('refresh_token:', refresh_token);
-
+            // Save the amount of seconds until the access token expired
+            tokenExpirationEpoch =
+                new Date().getTime() / 1000 + data.body['expires_in'];
             console.log(
-                `Sucessfully retreived access token. Expires in ${expires_in} s.`
+                'Retrieved token. It expires in ' +
+                Math.floor(tokenExpirationEpoch - new Date().getTime() / 1000) +
+                ' seconds!'
             );
+        },
+        function (err) {
+            console.log(
+                'Something went wrong when retrieving the access token!',
+                err.message
+            );
+        }
+    );
 
-            setInterval(async () => {
-                const data = await spotifyApi.refreshAccessToken();
-                const access_token = data.body['access_token'];
+    // spotifyApi
+    //     .authorizationCodeGrant(code)
+    //     .then(data => {
+    //         const access_token = data.body['access_token'];
+    //         const refresh_token = data.body['refresh_token'];
+    //         const expires_in = data.body['expires_in'];
 
-                console.log('The access token has been refreshed!');
-                console.log('access_token:', access_token);
-                spotifyApi.setAccessToken(access_token);
-            }, expires_in / 2 * 1000);
+    //         spotifyApi.setAccessToken(access_token);
+    //         spotifyApi.setRefreshToken(refresh_token);
+
+    //         console.log('access_token:', access_token);
+    //         console.log('refresh_token:', refresh_token);
+
+    //         console.log(
+    //             `Sucessfully retreived access token. Expires in ${expires_in} s.`
+    //         );
+    //         // res.send("Success")
+                
+           
             res.redirect("http://localhost:5000")
-
-        })
-        .catch(error => {
-            console.error('Error getting Tokens:', error);
-            res.send(`Error getting Tokens: ${error}`);
-        });
 });
+
+let numberOfTimesUpdated = 0;
+
+setInterval(function () {
+    console.log(
+        'Time left: ' +
+        Math.floor(tokenExpirationEpoch - new Date().getTime() / 1000) +
+        ' seconds left!'
+    );
+
+    // OK, we need to refresh the token. Stop printing and refresh.
+    if (++numberOfTimesUpdated > 5) {
+        clearInterval(this);
+
+        // Refresh token and print the new time to expiration.
+        spotifyApi.refreshAccessToken().then(
+            function (data) {
+                tokenExpirationEpoch =
+                    new Date().getTime() / 1000 + data.body['expires_in'];
+                console.log(
+                    'Refreshed token. It now expires in ' +
+                    Math.floor(tokenExpirationEpoch - new Date().getTime() / 1000) +
+                    ' seconds!'
+                );
+            },
+            function (err) {
+                console.log('Could not refresh the token!', err.message);
+            }
+        );
+    }
+}, 1000);
 
 
 
