@@ -43,22 +43,6 @@ const storage = multer.diskStorage({
 
 const app = express()
 
-
-// app.use(
-//     cors({
-//         origin: function (origin, callback) {
-//             if (!origin) return callback(null, true);
-//             if (allowedOrigins.indexOf(origin) === -1) {
-//                 var msg =
-//                     "The CORS policy for this site does not " +
-//                     "allow access from the specified Origin.";
-//                 return callback(new Error(msg), false);
-//             }
-//             return callback(null, true);
-//         }
-//     })
-// );
-
 app.use(cors())
 
 
@@ -99,32 +83,47 @@ app.post("/detectText", upload.single("file"), async (req, res) => {
     const finalAnalyzedData = printRecText(dataToPrint)
 
     let uriArr = [];
-
+    let generatedName = finalAnalyzedData.length > 1 ? `${finalAnalyzedData[0].split(req.body.separator)[0]},${finalAnalyzedData[1].split(req.body.separator)[0]}and friends` : `${finalAnalyzedData[0].split(req.body.separator)[0]} song`
 
     for (song of finalAnalyzedData) {
-        let eachSong = song.split("-")
-        let artistName = eachSong[0]
-        let songName = eachSong[1]
-        let searchQuery= encodeURI(`track:${songName}+artist:${artistName}`)
-       
-        let searchres = await axios.get(`https://api.spotify.com/v1/search?q=${searchQuery}&type=track`,{headers:{
-            "Authorization":`Bearer ${spotifyApi.getAccessToken()}`,
-            "Content-Type":"application/json"
+        let eachSong = song.split(req.body.separator)
+        let artistName, songName;
+  
+
+        if (req.body.leftSide === "Artist") {
+            artistName = eachSong[0]
+            songName = eachSong[1]
+        } else {
+            artistName = eachSong[1]
+            songName = eachSong[0]
         }
+
+        let searchQuery = encodeURI(`track:${songName}+artist:${artistName}`)
+        console.log(searchQuery)
+
+        let searchres = await axios.get(`https://api.spotify.com/v1/search?q=${searchQuery}&type=track`, {
+            headers: {
+                "Authorization": `Bearer ${spotifyApi.getAccessToken()}`,
+                "Content-Type": "application/json"
+            }
         })
 
         let songsResponse = searchres.data.tracks.items;
-        if (songsResponse.length>0){
+        if (songsResponse.length > 0) {
             uriArr.push(songsResponse[0].uri)
         }
 
-    } 
+    }
 
-    const makePlaylist = await spotifyApi.createPlaylist(req.body.playlistName,{'public':false})
-    const addSongsToPlaylist = await spotifyApi.addTracksToPlaylist(makePlaylist.body.id,uriArr)
+    let playlistName = req.body.playlistName == "" ? generatedName : req.body.playlistName;
+
+
+    const makePlaylist = await spotifyApi.createPlaylist(playlistName, { 'public': false })
+    const addSongsToPlaylist = await spotifyApi.addTracksToPlaylist(makePlaylist.body.id, uriArr)
     const playListUrl = await spotifyApi.getPlaylist(makePlaylist.body.id)
+    console.log(playListUrl.body)
 
-    res.send({ "data": playListUrl.body.external_urls.spotify })
+    res.send({ "data": { "url": playListUrl.body.external_urls.spotify, "name": playListUrl.body.name } })
 
 })
 
@@ -146,7 +145,6 @@ app.get("/callback", (req, res) => {
     }
 
 
-    // First retrieve an access token
     spotifyApi.authorizationCodeGrant(code).then(
         function (data) {
             // Set the access token and refresh token
@@ -170,26 +168,8 @@ app.get("/callback", (req, res) => {
         }
     );
 
-    // spotifyApi
-    //     .authorizationCodeGrant(code)
-    //     .then(data => {
-    //         const access_token = data.body['access_token'];
-    //         const refresh_token = data.body['refresh_token'];
-    //         const expires_in = data.body['expires_in'];
 
-    //         spotifyApi.setAccessToken(access_token);
-    //         spotifyApi.setRefreshToken(refresh_token);
-
-    //         console.log('access_token:', access_token);
-    //         console.log('refresh_token:', refresh_token);
-
-    //         console.log(
-    //             `Sucessfully retreived access token. Expires in ${expires_in} s.`
-    //         );
-    //         // res.send("Success")
-                
-           
-            res.redirect("http://localhost:5000")
+    res.redirect("http://localhost:5000")
 });
 
 let numberOfTimesUpdated = 0;
@@ -201,11 +181,8 @@ setInterval(function () {
         ' seconds left!'
     );
 
-    // OK, we need to refresh the token. Stop printing and refresh.
     if (++numberOfTimesUpdated > 5) {
         clearInterval(this);
-
-        // Refresh token and print the new time to expiration.
         spotifyApi.refreshAccessToken().then(
             function (data) {
                 tokenExpirationEpoch =
