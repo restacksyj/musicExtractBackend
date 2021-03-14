@@ -11,8 +11,6 @@ const SpotifyWebApi = require('spotify-web-api-node');
 const apiErrorHandler = require('./error/api-error-handler')
 const ApiError = require("./error/ApiError");
 
-const scopes = ['user-read-private', 'user-read-email', "playlist-modify-private"];
-const redirectUri = 'http://localhost:3000/callback';
 const to = require('await-to-js').default;
 
 
@@ -22,6 +20,10 @@ dotenv.config({ path: path.resolve(__dirname + '/process.env') });
 //Spotify initialization
 const clientId = process.env.SPOTIFY_CLIENT_KEY;
 const secretKey = process.env.SPOTIFY_CLIENT_SECRET;
+const redirectUri = process.env.SPOTIFY_REDIRECT_URI;
+const scopes = ['user-read-private', 'user-read-email', "playlist-modify-private"];
+
+
 
 var spotifyApi = new SpotifyWebApi({
     redirectUri: redirectUri,
@@ -88,6 +90,8 @@ app.post("/detectText", upload.single("file"), async (req, res, next) => {
             finalAnalyzedData = printRecText(ocrData)
         }
 
+        if(finalAnalyzedData.length===0) throw new ApiError(500,"Bad image")
+
         let uriArr = [];
         let generatedName = finalAnalyzedData.length > 1 ? `${finalAnalyzedData[0].split(req.body.separator)[0]},${finalAnalyzedData[1].split(req.body.separator)[0]}and friends` : `${finalAnalyzedData[0].split(req.body.separator)[0]} song`
         let searchres, searcherr;
@@ -96,7 +100,7 @@ app.post("/detectText", upload.single("file"), async (req, res, next) => {
             let eachSong = song.split(req.body.separator)
             let artistName, songName;
 
-
+ 
             if (req.body.leftSide === "Artist") {
                 artistName = eachSong[0]
                 songName = eachSong[1]
