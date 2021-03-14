@@ -61,7 +61,7 @@ app.use(express.urlencoded({ extended: true }))
 
 
 
-const PORT = 3000;
+const PORT = process.env.PORT;
 const APP_KEY = process.env.APP_KEY
 const azure_url = "https://eastus.api.cognitive.microsoft.com/vision/v3.1/read/analyze"
 let tokenExpirationEpoch;
