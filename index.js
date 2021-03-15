@@ -195,7 +195,7 @@ app.get("/callback", (req, res) => {
     );
 
 
-    res.redirect("http://localhost:5000")
+    res.redirect(process.env.FRONTEND_URL)
 });
 
 let numberOfTimesUpdated = 0;
