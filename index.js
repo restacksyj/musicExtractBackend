@@ -61,7 +61,7 @@ app.use(express.urlencoded({ extended: true }))
 
 
 
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3000;
 const APP_KEY = process.env.APP_KEY
 const azure_url = "https://eastus.api.cognitive.microsoft.com/vision/v3.1/read/analyze"
 let tokenExpirationEpoch;
@@ -90,7 +90,7 @@ app.post("/detectText", upload.single("file"), async (req, res, next) => {
             finalAnalyzedData = printRecText(ocrData)
         }
 
-        if(finalAnalyzedData.length===0) throw new ApiError(500,"Bad image")
+        if (finalAnalyzedData.length === 0) throw new ApiError(500, "Bad image")
 
         let uriArr = [];
         let generatedName = finalAnalyzedData.length > 1 ? `${finalAnalyzedData[0].split(req.body.separator)[0]},${finalAnalyzedData[1].split(req.body.separator)[0]}and friends` : `${finalAnalyzedData[0].split(req.body.separator)[0]} song`
@@ -100,7 +100,7 @@ app.post("/detectText", upload.single("file"), async (req, res, next) => {
             let eachSong = song.split(req.body.separator)
             let artistName, songName;
 
- 
+
             if (req.body.leftSide === "Artist") {
                 artistName = eachSong[0]
                 songName = eachSong[1]
@@ -132,17 +132,19 @@ app.post("/detectText", upload.single("file"), async (req, res, next) => {
 
         let playlistName = req.body.playlistName == "" ? generatedName : req.body.playlistName;
 
-      
-            const [createErr, makePlaylist] = await to(spotifyApi.createPlaylist(playlistName, { 'public': false }))
-            if (createErr) throw new ApiError(createErr.response.status, createErr.response.statusText)
 
-            const [addErr, addSongsToPlaylist] = await to(spotifyApi.addTracksToPlaylist(makePlaylist.body.id, uriArr))
-            if (addErr) throw new ApiError(createErr.response.status, createErr.response.statusText)
+        const [createErr, makePlaylist] = await to(spotifyApi.createPlaylist(playlistName, { 'public': false }))
+        if (createErr) throw new ApiError(createErr.response.status, createErr.response.statusText)
 
-            const [playListUrlErr, playListUrl] = await to(spotifyApi.getPlaylist(makePlaylist.body.id))
-            if (playListUrlErr) throw new ApiError(createErr.response.status, createErr.response.statusText)
+        const [addErr, addSongsToPlaylist] = await to(spotifyApi.addTracksToPlaylist(makePlaylist.body.id, uriArr))
 
-            res.send({ "data": { "url": playListUrl.body.external_urls.spotify, "name": playListUrl.body.name } })
+
+        if (addErr) throw new ApiError(addErr.body.error.status, addErr.body.error.message)
+
+        const [playListUrlErr, playListUrl] = await to(spotifyApi.getPlaylist(makePlaylist.body.id))
+        if (playListUrlErr) throw new ApiError(playListUrlErr.body.error.status, playListUrlErr.body.error.message)
+
+        res.send({ "data": { "url": playListUrl.body.external_urls.spotify, "name": playListUrl.body.name } })
 
 
     }
