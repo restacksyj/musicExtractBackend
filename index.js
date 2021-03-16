@@ -130,18 +130,22 @@ app.post("/detectText", upload.single("file"), async (req, res, next) => {
         }
 
 
-        let playlistName = req.body.playlistName == "" ? generatedName : req.body.playlistName;
 
+        if (uriArr.length === 0) throw new ApiError(400, "No tracks detected")
+        let playlistName = req.body.playlistName == "" ? generatedName : req.body.playlistName;
 
         const [createErr, makePlaylist] = await to(spotifyApi.createPlaylist(playlistName, { 'public': false }))
         if (createErr) throw new ApiError(createErr.response.status, createErr.response.statusText);
         
-
+        
         const [addErr, addSongsToPlaylist] = await to(spotifyApi.addTracksToPlaylist(makePlaylist.body.id, uriArr))
         if (addErr) {
             await spotifyApi.unfollowPlaylist(makePlaylist.body.id)
             throw new ApiError(addErr.body.error.status, addErr.body.error.message);
         }
+
+
+        // console.log(await spotifyApi.getUserPlaylists())
 
         const [playListUrlErr, playListUrl] = await to(spotifyApi.getPlaylist(makePlaylist.body.id))
         if (playListUrlErr) throw new ApiError(playListUrlErr.body.error.status, playListUrlErr.body.error.message)
