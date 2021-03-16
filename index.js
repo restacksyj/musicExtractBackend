@@ -158,7 +158,8 @@ app.post("/detectText", upload.single("file"), async (req, res, next) => {
 })
 
 app.get("/spotifyLogin", (req, res) => {
-    res.redirect(spotifyApi.createAuthorizeURL(scopes))
+    res.redirect(spotifyApi.createAuthorizeURL(scopes));
+    tokenFn()
 
 });
 
@@ -215,6 +216,7 @@ const tokenFn = () => setInterval(function () {
             function (data) {
                 tokenExpirationEpoch =
                     new Date().getTime() / 1000 + data.body['expires_in'];
+                  
                 console.log(
                     'Refreshed token. It now expires in ' +
                     Math.floor(tokenExpirationEpoch - new Date().getTime() / 1000) +
@@ -222,7 +224,7 @@ const tokenFn = () => setInterval(function () {
                 );
             },
             function (err) {
-                next(ApiError.refreshToken("Not authorized"))
+                // next(ApiError.refreshToken("Not authorized"))
                 console.log('Could not refresh the token!', err.message);
             }
         );
