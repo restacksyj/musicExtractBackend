@@ -134,12 +134,14 @@ app.post("/detectText", upload.single("file"), async (req, res, next) => {
 
 
         const [createErr, makePlaylist] = await to(spotifyApi.createPlaylist(playlistName, { 'public': false }))
-        if (createErr) throw new ApiError(createErr.response.status, createErr.response.statusText)
+        if (createErr) throw new ApiError(createErr.response.status, createErr.response.statusText);
+        
 
         const [addErr, addSongsToPlaylist] = await to(spotifyApi.addTracksToPlaylist(makePlaylist.body.id, uriArr))
-
-
-        if (addErr) throw new ApiError(addErr.body.error.status, addErr.body.error.message)
+        if (addErr) {
+            await spotifyApi.unfollowPlaylist(makePlaylist.body.id)
+            throw new ApiError(addErr.body.error.status, addErr.body.error.message);
+        }
 
         const [playListUrlErr, playListUrl] = await to(spotifyApi.getPlaylist(makePlaylist.body.id))
         if (playListUrlErr) throw new ApiError(playListUrlErr.body.error.status, playListUrlErr.body.error.message)
