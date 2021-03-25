@@ -10,4 +10,4 @@
    npm run dev 
    ```
    
-> If interested in the backend, it's on [musicExtractFrontend](https://github.com/restacksyj/musicExtractFrontend)
+> If interested in the frontend, it's on [musicExtractFrontend](https://github.com/restacksyj/musicExtractFrontend)
