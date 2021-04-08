@@ -64,6 +64,7 @@ app.use(express.urlencoded({ extended: true }))
 const PORT = process.env.PORT || 3000;
 const APP_KEY = process.env.APP_KEY
 const azure_url = "https://eastus.api.cognitive.microsoft.com/vision/v3.1/read/analyze"
+const regex = /[!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~]/g;
 let tokenExpirationEpoch;
 
 
@@ -303,7 +304,7 @@ const printRecText = (readResults) => {
         const result = readResults[page];
         if (result.lines.length) {
             for (const line of result.lines) {
-                mappedData.push(line.words.map(w => w.text).join(' '));
+                mappedData.push(line.words.map(w => w.text.toString().replace(regex,'')).join(' '));
 
             }
             return mappedData;
